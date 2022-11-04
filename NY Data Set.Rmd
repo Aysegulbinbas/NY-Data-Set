@@ -1,0 +1,438 @@
+---
+title: "NY Data Set"
+author: "AyşegülBinbaş"
+date: "19 05 2022"
+output: word_document
+---
+
+
+```{r}
+
+# The data set titled NY.txt is collected with an interest in observing the impact of new housing projects in New York State Municipalities.
+
+#Preprocess
+Ny=read.delim("C:/Users/90551/Desktop/stat412-hw2/NY.txt", header = F,sep="")
+#To create col names :
+colnames(Ny) =c("row.num","state.code","count.code","epp","wpp","tot.popn","intergov","density","mipp","id","popn.grow.rate")
+
+
+
+dim(Ny)
+str(Ny)
+summary(Ny)
+summary(Ny$count.code) #there are some negative values , so they need to be positive.
+Ny$count.code <- abs(Ny$count.code)
+#To change the type of intergov to numeric:
+Ny$intergov=as.numeric(Ny$intergov)
+Ny$count.code=as.factor(Ny$count.code)
+
+summary(Ny)
+#there are some na values:
+sum(is.na(Ny))
+colSums(is.na(Ny))
+
+
+#As can be seen than there are na values in wpp,intergov and mipp.
+library(VIM)
+library(dplyr) 
+
+
+aggr_plot <- aggr(Ny, col=c('navyblue','red'), numbers=TRUE, sortVars=TRUE, labels=names(Ny), cex.axis=.7, gap=3, ylab=c("Histogram of missing data","Pattern"))
+# From this graph ,we can also see the missing structure.Also, approximately 0.06% of mipp ,0.098% of wpp,and 0.003% of intergov is missing.
+
+sapply(Ny, function(x) sum(is.na(x)))
+
+#To impute the missing data with mice package
+#install.packages("mice")
+
+library(mice)
+
+init = mice(Ny, maxit=0) 
+init
+
+
+meth = init$method # shows the method of imputation for each variable
+meth
+
+
+predM = init$predictorMatrix
+predM
+
+
+set.seed(123)
+imputed = mice(Ny, method=meth, predictorMatrix=predM, m=5)
+
+imputed <- complete(imputed)
+colSums(is.na(imputed))  # missing values are imputed.
+
+head(imputed)
+summary(imputed)
+str(imputed)
+
+#when we compare summaries btw imputed and original data set , the summary results not so far away than the each other.
+
+
+
+
+
+```
+
+
+```{r}
+
+#Identify hidden patterns and insights about data:
+
+library(ggplot2)
+library(gridExtra)
+
+options(repr.plot.width=6, repr.plot.height=6)
+p1 <- ggplot(imputed, aes(row.num)) + geom_density()
+p2 <- ggplot(imputed, aes(state.code)) + geom_density()
+p3 <- ggplot(imputed, aes(count.code)) + geom_bar()
+p4 <- ggplot(imputed, aes(epp)) + geom_density()
+p5 <- ggplot(imputed, aes(wpp)) + geom_density()
+p6 <- ggplot(imputed, aes(tot.popn)) + geom_density()
+p7 <- ggplot(imputed, aes(intergov)) + geom_density()
+p8 <- ggplot(imputed, aes(density)) + geom_density()
+p9 <- ggplot(imputed, aes(mipp)) + geom_density()
+p10 <- ggplot(imputed, aes(id)) + geom_density()
+p11 <- ggplot(imputed, aes(popn.grow.rate)) + geom_density()
+grid.arrange(p1, p2, p3, p4, p5, p6, p7, p8,p9,p10,p11, ncol=3)
+
+
+#Expenditure per person, Wealth per person, Mean Income per person, Percent intergovernmental support, Population growth rate seems right skewed.
+
+
+
+# To look at hidden pattern :
+library(corrplot)
+corr<-cor(imputed[,c(4:11)])
+corrplot(corr, method="number")
+#There exists relationship between wpp and epp.
+#There exists relationship between density and tot.popn.
+#There exists relationship between mipp and wpp.
+
+# To look at the association between  Expenditure per person (response) and   Wealth per person :
+
+
+ggplot(imputed,aes(x=epp,y=wpp))+geom_point(col="darkred")+labs(title = "The relationship between Expenditure per person and Wealth per person")
+
+#It can be seen that there is a relationship among them.
+
+# To look at the association between Mean Income per person and Population growth rate :
+
+
+ggplot(imputed,aes(x=mipp,y=popn.grow.rate))+geom_point(col="darkred")+labs(title = "The relationship between Mean Income per person and Population growth rate")
+
+
+#There is no clear pattern between Mean Income per person and Population growth rate
+
+
+
+
+
+# In order to look at the relationships between the predictors and the response:
+
+
+options(repr.plot.width=6, repr.plot.height=6)
+e1 <- ggplot(imputed, aes(row.num,epp)) + geom_point()
+e2 <- ggplot(imputed, aes(state.code,epp)) + geom_point()
+e3 <- ggplot(imputed, aes(count.code,epp)) + geom_boxplot()
+e4 <- ggplot(imputed, aes(wpp,epp)) + geom_point()
+e5 <- ggplot(imputed, aes(tot.popn,epp)) + geom_point()
+e6 <- ggplot(imputed, aes(intergov,epp)) + geom_point()
+e7 <- ggplot(imputed, aes(density,epp)) + geom_point()
+e8 <- ggplot(imputed, aes(mipp,epp)) + geom_point()
+e9 <- ggplot(imputed, aes(id,epp)) + geom_point()
+e10 <- ggplot(imputed, aes(popn.grow.rate,epp)) + geom_point()
+grid.arrange(e1, e2, e3, e4, e5, e6, e7, e8,e9,e10, ncol=3)
+
+#we can say that , there is a linear association between Wealth per person,Mean Income per person and response,but rest of them not so clear.
+
+library(tidyverse)
+library(caret)
+
+
+
+```
+
+
+```{r}
+
+
+#As can understand from part b , some of the variable has linear relationship btw response,some of them doesnt have.Also,the distribution of the variables are not notmal ,so we need to apply transformation methods.
+
+
+summary(imputed)
+new_data=imputed[,-c(1,2)]  # all state codes are some so it is drobbed from the data set.Also,row num was dropped.
+set.seed(123)
+head(new_data)
+
+library(caret)
+
+
+#Also, in part b the distribution of data was checked,which are not normal.Hence, transformation can be applied.
+
+#Transformation for Nonnormality : log transformation will be used
+#install.packages("rcompanion")
+
+
+library(rcompanion)
+#For epp
+plotNormalHistogram(new_data$epp)   # ıt is right skewed
+plotNormalHistogram(log(new_data$epp)) # ıt is almost normal, there can be outliers.
+#or
+BoxCoxTrans(new_data$epp)
+transformed.epp= (new_data$epp)^-0.4
+plotNormalHistogram(transformed.epp) #more close to normal.
+
+#For wpp
+plotNormalHistogram(new_data$wpp)   # ıt is right skewed
+plotNormalHistogram(log(new_data$wpp)) # ıt is almost normal.
+
+BoxCoxTrans(new_data$wpp)
+transformed.wpp= (new_data$wpp)^-0.6
+plotNormalHistogram(transformed.wpp) #more close to normal.
+
+
+#For tot.popn:
+plotNormalHistogram(new_data$tot.popn)   # ıt is right skewed
+plotNormalHistogram(log(new_data$tot.popn)) # ıt is almost normal.
+
+
+
+#For intergov:
+plotNormalHistogram(new_data$intergov)   # ıt is right skewed
+
+BoxCoxTrans(new_data$intergov)
+t1= (new_data$intergov)^0.2
+plotNormalHistogram(t1) #more close to normal.
+
+#For density:
+plotNormalHistogram(new_data$density)   # ıt is right skewed
+plotNormalHistogram(log(new_data$density)) # ıt is almost normal.
+
+BoxCoxTrans(new_data$density)
+t2= (new_data$density)^-0.1
+plotNormalHistogram(t2) #more close to normal.
+
+
+#For mipp:
+plotNormalHistogram(new_data$mipp)   # ıt is right skewed
+plotNormalHistogram(log(new_data$mipp)) # more close to normal.
+
+
+BoxCoxTrans(new_data$mipp)
+transformed.mipp= (new_data$mipp)^-0.5
+plotNormalHistogram(transformed.mipp) #ıt is almost normal.
+
+
+
+#For id:
+plotNormalHistogram(new_data$id)   # ıt is right skewed
+plotNormalHistogram(log(new_data$id)) # ıt is almost normal.
+
+
+BoxCoxTrans(new_data$id)
+t3= (new_data$id)^0.7
+plotNormalHistogram(t3) #ıt is almost normal.
+
+
+
+
+
+#For pop.grow:
+
+min(new_data$popn.grow.rate)
+new_data$popn.grow.rate =new_data$popn.grow.rate +55
+min(new_data$popn.grow.rate)
+plotNormalHistogram(new_data$popn.grow.rate)   # ıt is right skewed
+plotNormalHistogram(log(new_data$popn.grow.rate)) # ıt is almost normal.
+
+
+
+#Hence, ı will apply log transformation or boxcox  to these variables.
+
+
+
+
+```
+
+
+```{r}
+
+#Validation :
+
+#training data as 80% of the data set
+random_sample <- createDataPartition(new_data$epp, p = 0.8, list = FALSE)
+# generating training data set from the random_sample
+training_dataset  <- new_data[random_sample, ]
+# generating testing data set from rows which are not included in random_sample
+testing_dataset <- new_data[-random_sample, ]
+dim_of_dataset=dim(new_data)
+dim_of_train=dim(training_dataset)
+dim_of_test=dim(testing_dataset)
+cbind(dim_of_dataset,dim_of_train,dim_of_test)
+
+
+
+
+```
+
+
+
+```{r}
+
+#Most important findings:
+f1 <- lm(epp ~ ., data = training_dataset)
+summary(f1)
+# wpp,mipp and popn.grow.rate are significant.
+
+f1.1 <- lm(epp ~ wpp +mipp+popn.grow.rate, data = training_dataset)
+summary(f1.1)
+
+
+f1.2 <- lm(log(epp) ~ wpp +mipp+popn.grow.rate, data = training_dataset)
+summary(f1.2) #adj R2 so small.
+
+#Now we obtain residual plots
+
+par(mfrow=c(2,2))
+plot(f1.1)
+#Data seems normal
+# The residuals not bounce randomly around 0 line. This suggests the assumption that the relationship is linear is not satisfied.
+#It seems constant variance assumption does not meet.
+# Scale-Location plot shows that homogeneity of variance of the residuals will not satisfied.
+# According to residuals vs Leverage plot,we can conclude that there exists influential observations.
+
+
+# Check whether the multicollinearity exists.
+library(car)
+vif(f1.1)
+# Some of the vif values less than the 5 ,there is no multicollinearity problem.
+
+
+
+
+# predicting the target variable
+pred1 <- f1 %>%  predict(testing_dataset)
+pred1
+
+# computing model performance metrics
+metrics1<-data.frame(RMSE = RMSE(pred1, testing_dataset$epp),
+                    Rsquared = R2(pred1, testing_dataset$epp),
+                    MAE = MAE(pred1, testing_dataset$epp))
+metrics1
+
+
+# Building the model on transformed variables :
+class(new_data$count.code)
+f2 <- lm(log(epp) ~ count.code + log(wpp) + log(tot.popn) +
+          log(intergov) + density +log(mipp) + log(id) +
+           log(popn.grow.rate), data = training_dataset)
+
+summary(f2)
+
+# As can be seen from the f2 model count.code,log(wpp),log(tot.popn),log(intergov),density are significant.
+# Also, model p-value: < 2.2e-16, hence model is significant.
+
+f2.2 <- lm(log(epp) ~ count.code + log(wpp) + log(tot.popn) +
+           log(intergov) + density , data = training_dataset)
+
+summary(f2.2)
+
+# f2.2 is significant p-value: < 2.2e-16, Adjusted R-squared:  0.5798 
+#No.w,we can check assumptions :
+
+#Now we obtain residual plots
+
+par(mfrow=c(2,2))
+plot(f2.2)
+#Data seems normal
+# The residuals not bounce randomly around 0 line. This suggests the assumption that the relationship is linear is not satisfied.
+#It seems constant variance assumption meet.
+# Scale-Location plot shows that homogeneity of variance of the residuals almost satisfied.
+# According to residuals vs Leverage plot,we can conclude that there exists influential observations.
+
+
+# Check whether the multicollinearity exists.
+library(car)
+vif(f2.2)
+# Some of the vif values greater than the 5 ,there is multicollinearity problem.
+
+
+
+# predicting the target variable
+pred2.2 <- f2.2 %>%  predict(testing_dataset)
+pred2.2
+
+# computing model performance metrics
+metrics2<-data.frame(RMSE = RMSE(pred2.2, testing_dataset$epp),
+                     Rsquared = R2(pred2.2, testing_dataset$epp),
+                     MAE = MAE(pred2.2, testing_dataset$epp))
+metrics2
+
+
+
+
+f3 <- lm(log(epp) ~ count.code + log(wpp) + log(tot.popn) +
+             log(intergov) + density +mipp +popn.grow.rate , data = training_dataset)
+
+summary(f3)
+
+
+f3.3 <- lm(log(epp) ~ count.code + log(wpp) + log(tot.popn) +
+           log(intergov) + density +popn.grow.rate , data = training_dataset)
+
+summary(f3.3)
+
+#Now we obtain residual plots
+
+par(mfrow=c(2,2))
+plot(f3.3)
+#Data seems normal
+# The residuals not bounce randomly around 0 line. This suggests the assumption that the relationship is linear is not satisfied.
+#It seems constant variance assumption does not meet.
+# Scale-Location plot shows that homogeneity of variance of the residuals will not satisfied.
+# According to residuals vs Leverage plot,we can conclude that there exists influential observations.
+
+
+# Check whether the multicollinearity exists.
+library(car)
+vif(f3.3)
+# Some of the vif values less than the 5 except count code.
+
+
+
+# predicting the target variable
+pred3.3 <- f3.3 %>%  predict(testing_dataset)
+pred3.3
+
+# computing model performance metrics
+metrics3<-data.frame(RMSE = RMSE(pred3.3, testing_dataset$epp),
+                     Rsquared = R2(pred3.3, testing_dataset$epp),
+                     MAE = MAE(pred3.3, testing_dataset$epp))
+
+
+
+
+```
+
+```{r}
+
+#summary(f1.1)   # Adjusted R-squared:  0.625 
+#summary(f2.2)   # Adjusted R-squared:  0.5798
+#summary(f3.3)    # Adjusted R-squared:  0.5824
+
+
+
+metrics1  # f1.1 has the smallest RMSE and MAE ,so we can say that model f1.1 better than the others.
+metrics2
+metrics3
+
+
+
+
+
+```
+
